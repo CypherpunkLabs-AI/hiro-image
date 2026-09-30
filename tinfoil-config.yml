@@ -1,0 +1,58 @@
+# Replace the image tag/digest and frontend placeholders before tagging this
+# public attestation repository. The image must remain pinned by digest.
+cvm-version: 0.7.5
+cpus: 2
+memory: 8192
+
+containers:
+  - name: "hiro-proxy"
+    image: "ghcr.io/dominik7787/hiro-proxy:REPLACE_RELEASE_TAG@sha256:REPLACE_IMAGE_DIGEST"
+    env:
+      - APP_ENV: "production"
+      - APP_BIND_ADDR: "0.0.0.0:8080"
+      - DATABASE_MAX_CONNECTIONS: "20"
+      - CLERK_ISSUER: "https://next-cheetah-8842.clerk.accounts.dev"
+      - CLERK_AUTHORIZED_PARTIES: "https://REPLACE_FRONTEND_DOMAIN"
+      - CLERK_JWKS_CACHE_SECONDS: "3600"
+      - CLERK_API_URL: "https://api.clerk.com/"
+      - STRIPE_API_URL: "https://api.stripe.com/"
+      - STRIPE_PRO_PRICE_ID: "price_1UBvCtGd0dRqBDfHBW3jwc6h"
+      - WEBAUTHN_RP_ID: "REPLACE_FRONTEND_DOMAIN"
+      - WEBAUTHN_RP_ORIGIN: "https://REPLACE_FRONTEND_DOMAIN"
+      - WEBAUTHN_RP_NAME: "A"
+      - SESSION_TTL_HOURS: "720"
+      - CHALLENGE_TTL_MINUTES: "5"
+      - INFERENCE_MODE: "tinfoil"
+      - INFERENCE_TEMPERATURE: "0.7"
+      - INFERENCE_MAX_TOKENS: "32000"
+      - INFERENCE_MAX_CONCURRENCY: "1000"
+      - R2_ENDPOINT: "https://351f15131fbbc3db22fdf480141f1320.r2.cloudflarestorage.com"
+      - R2_BUCKET: "test123"
+      - R2_PRESIGN_TTL_SECONDS: "900"
+      - MAX_ATTACHMENT_BYTES: "1073741824"
+      - ATTACHMENT_PART_SIZE: "8388608"
+      - MAX_REQUEST_BYTES: "1048576"
+      - SYNC_PAGE_LIMIT: "250"
+      - LOG_JSON: "true"
+      - RUST_LOG: "hiro_proxy=info,tower_http=info"
+    secrets:
+      - DATABASE_URL
+      - TINFOIL_API_KEY
+      - CLERK_SECRET_KEY
+      - STRIPE_SECRET_KEY
+      - R2_ACCESS_KEY_ID
+      - R2_SECRET_ACCESS_KEY
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: "on-failure"
+
+shim:
+  upstream-port: 8080
+  paths:
+    - /health/*
+    - /v1/*
+    - /v3/*
