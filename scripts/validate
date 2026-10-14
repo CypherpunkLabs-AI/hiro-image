@@ -6,9 +6,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
-from image_lib import ROOT, require, version
+from image_lib import ROOT, require, validate_release_inputs, version
 from platform_measurements import PROFILE, load_profile
 
+validate_release_inputs()
 value = version()
 load_profile(ROOT / 'platform' / PROFILE, check_evidence=True)
 ref = os.environ.get('GITHUB_REF', '')

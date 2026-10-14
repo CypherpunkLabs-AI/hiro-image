@@ -121,7 +121,7 @@ jobs:
           prerelease=()
           if [[ "$RELEASE_TAG" == *-* ]]; then prerelease+=(--prerelease); fi
           gh release create "$RELEASE_TAG" dist/publish/* --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --draft --title "hiro-image $RELEASE_TAG" --notes-file docs/release-notes.md
+            --verify-tag --draft --title "hiro-image $RELEASE_TAG" --generate-notes
           # Compare server-stored assets before making the release visible.
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir dist/published
           (cd dist/published && sha256sum --check SHA256SUMS)

@@ -11,9 +11,11 @@ import tarfile
 import tempfile
 from boot_measurements import measure_gpt, measure_pe
 from platform_measurements import PROFILE, appraisal, load_profile
-from image_lib import (ROOT, ESP, ROOT_PARTITION, VERITY, archive_disk, checksums,
-                       copy_partition, digest, partitions, require, run, version, write_json)
+from image_lib import (ROOT, ESP, ROOT_PARTITION, VERITY, TOOL_PATHS, archive_disk, checksums,
+                       copy_partition, digest, partitions, require, run, validate_release_inputs,
+                       version, write_json)
 
+validate_release_inputs()
 dist = ROOT / 'dist'
 disk = dist / 'image/h-image.raw'
 out = dist / 'publish'
@@ -62,12 +64,8 @@ with tarfile.open(out / 'platform-evidence.tar.gz', mode='w:gz') as archive:
 platform_appraisal = appraisal(out / PROFILE, gpt, pe_hash, sections, out / 'linuxx64.efi.stub')
 # Include the matching consumer tools with each release, not an unpinned script
 # downloaded from a moving branch in a later application build.
-tool_paths = ['flake.nix', 'flake.lock', 'VERSION', 'README.md', 'LICENSE',
-              'docs/workload-contract.md', 'scripts/image_lib.py', 'scripts/boot_measurements.py',
-              'scripts/platform_measurements.py',
-              'scripts/select-os', 'scripts/assemble-release', 'scripts/collect-evidence']
 with tarfile.open(out / 'image-tools.tar.gz', mode='w:gz') as archive:
-    for name in tool_paths:
+    for name in TOOL_PATHS:
         archive.add(ROOT / name, arcname=name)
 identity = json.loads((ROOT / 'image/mkosi.extra/usr/lib/h-image/os-build.json').read_text())
 workflow_commit = os.environ.get('GITHUB_WORKFLOW_SHA', identity['source_commit'])

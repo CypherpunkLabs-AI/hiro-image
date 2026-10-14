@@ -9,11 +9,21 @@ ROOT = Path(__file__).resolve().parents[1]
 ESP = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 ROOT_PARTITION = '4f68bce3-e8cd-4db1-96e7-fbcaf984b709'
 VERITY = '2c7357ed-ebd2-46d9-aec1-23d437ec2bf5'
+TOOL_PATHS = ('flake.nix', 'flake.lock', 'VERSION', 'LICENSE',
+              'scripts/image_lib.py', 'scripts/boot_measurements.py',
+              'scripts/platform_measurements.py',
+              'scripts/select-os', 'scripts/assemble-release', 'scripts/collect-evidence')
 
 
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def validate_release_inputs():
+    missing = [name for name in TOOL_PATHS
+               if not (ROOT / name).is_file()]
+    require(not missing, 'missing release input files: ' + ', '.join(missing))
 
 
 def run(*args, **kwargs):
