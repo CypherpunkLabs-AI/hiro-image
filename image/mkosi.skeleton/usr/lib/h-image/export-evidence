@@ -1,0 +1,115 @@
+#!/usr/bin/python3
+"""Export public boot evidence to serial port 2 for an explicitly requested boot."""
+import base64
+import gzip
+import hashlib
+import http.client
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import termios
+
+
+def read_limited(path, limit):
+    with Path(path).open('rb') as stream:
+        value = stream.read(limit + 1)
+    if not value or len(value) > limit:
+        raise ValueError('missing or oversized evidence: ' + str(path))
+    return value
+
+
+def challenge():
+    # Fixed endpoint, no proxy, redirects, credentials, or metadata commands.
+    connection = http.client.HTTPConnection('169.254.169.254', timeout=5)
+    try:
+        connection.request('GET', '/computeMetadata/v1/instance/attributes/h-image-evidence-nonce',
+                           headers={'Metadata-Flavor': 'Google'})
+        response = connection.getresponse()
+        if response.status == 404:
+            return None
+        if response.status != 200 or response.getheader('Metadata-Flavor') != 'Google':
+            raise ValueError('could not read evidence challenge from instance metadata')
+        raw = response.read(257)
+        if len(raw) > 256:
+            raise ValueError('oversized evidence challenge')
+        value = raw.decode('ascii').strip()
+        if not re.fullmatch('[0-9a-f]{128}', value):
+            raise ValueError('h-image-evidence-nonce must be 64 random bytes encoded as 128 lowercase hex characters')
+        return value
+    finally:
+        connection.close()
+
+
+def frames(evidence):
+    payload = gzip.compress(json.dumps(evidence, sort_keys=True, separators=(',', ':')).encode(), mtime=0)
+    if len(payload) > 256 * 1024:
+        raise ValueError('evidence exceeds the serial export size limit')
+    encoded = base64.b64encode(payload).decode('ascii')
+    chunks = [encoded[i:i + 768] for i in range(0, len(encoded), 768)]
+    digest = hashlib.sha256(payload).hexdigest()
+    prefix = 'H_IMAGE_EVIDENCE_V1 ' + evidence['nonce'] + ' '
+    return ([prefix + f'BEGIN {len(chunks)} {digest}'] +
+            [prefix + f'DATA {i} {part}' for i, part in enumerate(chunks)] +
+            [prefix + 'END ' + digest])
+
+
+def main():
+    nonce = challenge()
+    if nonce is None:
+        print('H_IMAGE_EVIDENCE_SKIPPED: no diagnostic challenge supplied', flush=True)
+        return
+    subprocess.run(['modprobe', 'configfs'], check=True)
+    if not os.path.ismount('/sys/kernel/config'):
+        subprocess.run(['mount', '-t', 'configfs', 'configfs', '/sys/kernel/config'], check=True)
+    subprocess.run(['modprobe', 'tdx_guest'], check=False)
+    ccel_path = '/sys/firmware/acpi/tables/data/CCEL'
+    ccel = read_limited(ccel_path, 16 * 1024 * 1024)
+    table = read_limited('/sys/firmware/acpi/tables/CCEL', 4096)
+    report = Path('/sys/kernel/config/tsm/report/h-image-evidence')
+    report.mkdir(mode=0o700)
+    try:
+        if (report / 'provider').read_text().strip() != 'tdx_guest':
+            raise ValueError('TDX quote provider required')
+        (report / 'inblob').write_bytes(bytes.fromhex(nonce))
+        quote = read_limited(report / 'outblob', 64 * 1024)
+        if (len(quote) < 636 or quote[:2] != b'\x04\x00' or quote[4:8] != b'\x81\x00\x00\x00'
+                or quote[168] & 1 or quote[568:632] != bytes.fromhex(nonce)):
+            raise ValueError('non-debug TDX v4 quote bound to the supplied challenge required')
+    finally:
+        report.rmdir()
+    if read_limited(ccel_path, 16 * 1024 * 1024) != ccel:
+        raise ValueError('CCEL changed during capture; collect again with a fresh challenge')
+    evidence = {
+        'schema': 'h-image.boot-evidence.v1', 'nonce': nonce,
+        'quote': base64.b64encode(quote).decode('ascii'),
+        'ccel': base64.b64encode(ccel).decode('ascii'),
+        'ccel_table': base64.b64encode(table).decode('ascii'),
+        'os_build': json.loads(Path('/usr/lib/h-image/os-build.json').read_text()),
+        'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+    }
+    # Port 2 has its own buffer: ordinary boot output stays on port 1.
+    # Nothing from the config/workload disks, environment, or key stores is read.
+    lines = frames(evidence)
+    with open('/dev/ttyS1', 'wb', buffering=0) as serial:
+        attributes = termios.tcgetattr(serial.fileno())
+        attributes[0] &= ~(termios.IXON | termios.IXOFF | termios.IXANY)
+        attributes[1] = 0
+        attributes[2] = (attributes[2] | termios.CLOCAL | termios.CREAD) & ~termios.CRTSCTS
+        attributes[4] = attributes[5] = termios.B115200
+        termios.tcsetattr(serial.fileno(), termios.TCSANOW, attributes)
+        for line in lines:
+            remaining = (line + '\n').encode('ascii')
+            while remaining:
+                written = serial.write(remaining)
+                if not written:
+                    raise OSError('serial evidence write failed')
+                remaining = remaining[written:]
+        termios.tcdrain(serial.fileno())
+    print('H_IMAGE_EVIDENCE_READY: public quote and CCEL exported on serial port 2', flush=True)
+    # Collection is not DCAP verification, CCEL replay, or platform approval.
+
+
+if __name__ == '__main__':
+    main()

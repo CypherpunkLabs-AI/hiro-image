@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+
+# This hook operates on the image tree outside mkosi's chroot resolver mount.
+ln -sfnT /run/systemd/resolve/stub-resolv.conf "${BUILDROOT:?mkosi must provide BUILDROOT}/etc/resolv.conf"

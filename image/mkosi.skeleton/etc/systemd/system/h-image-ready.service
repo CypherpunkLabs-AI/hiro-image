@@ -1,0 +1,16 @@
+[Unit]
+Description=Check h-image runtime and immutable root
+Requires=docker.service
+After=docker.service
+Before=h-image-workload.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/h-image/check-runtime
+StandardOutput=journal+console
+StandardError=journal+console
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

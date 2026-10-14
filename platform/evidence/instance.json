@@ -1,0 +1,54 @@
+{
+  "confidentialInstanceConfig": {
+    "confidentialInstanceType": "TDX",
+    "enableConfidentialCompute": true
+  },
+  "creationTimestamp": "2026-10-14T02:18:45.227-07:00",
+  "disks": [
+    {
+      "architecture": "X86_64",
+      "autoDelete": true,
+      "boot": true,
+      "deviceName": "instance-20261014-091343",
+      "diskSizeGb": "10",
+      "guestOsFeatures": [
+        {
+          "type": "TDX_CAPABLE"
+        },
+        {
+          "type": "UEFI_COMPATIBLE"
+        },
+        {
+          "type": "GVNIC"
+        },
+        {
+          "type": "VIRTIO_SCSI_MULTIQUEUE"
+        }
+      ],
+      "index": 0,
+      "interface": "NVME",
+      "kind": "compute#attachedDisk",
+      "licenses": [
+        "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2604-lts"
+      ],
+      "mode": "READ_WRITE",
+      "source": "https://www.googleapis.com/compute/v1/projects/cypherpunklabs/zones/us-central1-a/disks/instance-20261014-091343",
+      "type": "PERSISTENT"
+    }
+  ],
+  "id": "5693705192325969434",
+  "lastStartTimestamp": "2026-10-14T02:18:52.767-07:00",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/cypherpunklabs/zones/us-central1-a/machineTypes/c3-standard-4",
+  "name": "instance-20261014-091343",
+  "networkInterfaces": [
+    {
+      "nicType": "GVNIC"
+    }
+  ],
+  "shieldedInstanceConfig": {
+    "enableIntegrityMonitoring": true,
+    "enableSecureBoot": false,
+    "enableVtpm": true
+  },
+  "zone": "https://www.googleapis.com/compute/v1/projects/cypherpunklabs/zones/us-central1-a"
+}

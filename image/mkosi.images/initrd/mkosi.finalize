@@ -1,0 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+# Ubuntu ships dm-verity activation separately from systemd and cryptsetup.
+for helper in systemd-veritysetup system-generators/systemd-veritysetup-generator system-generators/systemd-gpt-auto-generator; do
+  test -x "${BUILDROOT:?mkosi must provide BUILDROOT}/usr/lib/systemd/$helper"
+done

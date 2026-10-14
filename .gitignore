@@ -1,0 +1,14 @@
+dist/
+result
+image/mkosi.extra/
+image/mkosi.cache/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.key
+*.pem
+!/platform/evidence/google-tcb-root.pem
+gha-creds-*.json
+docs*
+

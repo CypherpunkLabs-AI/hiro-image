@@ -1,0 +1,5 @@
+tmpfs /var tmpfs noswap,nosuid,nodev,mode=0755,size=60% 0 0
+tmpfs /tmp tmpfs noswap,nosuid,nodev,noexec,mode=1777,size=64M 0 0
+# Mounted on demand by the workload service, not required to boot the base OS.
+LABEL=hiro-workload /mnt/workload ext4 ro,nosuid,nodev,noexec,noauto,x-systemd.device-timeout=30s 0 0
+LABEL=hiro-config /mnt/config ext4 ro,nosuid,nodev,noexec,noauto,x-systemd.device-timeout=30s 0 0

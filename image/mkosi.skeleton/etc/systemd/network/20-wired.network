@@ -1,0 +1,10 @@
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+IPv6AcceptRA=no
+
+[DHCPv4]
+UseHostname=no
+UseRoutes=yes

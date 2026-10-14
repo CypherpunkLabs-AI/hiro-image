@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Check ordinary UEFI OS startup; this is not a TDX hardware qualification."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from image_lib import ROOT, finalize_disk, require, write_json
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--preflight', action='store_true')
+args = parser.parse_args()
+dist = ROOT / 'dist'
+dist.mkdir(exist_ok=True)
+log_path = dist / ('boot-preflight.log' if args.preflight else 'boot.log')
+if not args.preflight:
+    finalize_disk(dist / 'image/h-image.raw')
+with tempfile.TemporaryDirectory(prefix='h-image-boot-') as temporary:
+    code = Path(os.environ['H_IMAGE_OVMF'])
+    template = Path(os.environ['H_IMAGE_OVMF_VARS'])
+    require(code.is_file() and template.is_file(), 'both OVMF flash files are required')
+    variables = Path(temporary) / 'vars.fd'
+    shutil.copyfile(template, variables)
+    command = ['qemu-system-x86_64', '-machine', 'q35', '-m', '4096', '-smp', '2',
+               '-drive', f'if=pflash,format=raw,unit=0,readonly=on,file={code}',
+               '-drive', f'if=pflash,format=raw,unit=1,file={variables}',
+               '-netdev', 'user,id=net0,restrict=on', '-device', 'virtio-net-pci,netdev=net0',
+               '-display', 'none', '-monitor', 'none', '-no-reboot']
+    if os.access('/dev/kvm', os.R_OK | os.W_OK):
+        command += ['-accel', 'kvm', '-cpu', 'host']
+    else:
+        command += ['-accel', 'tcg', '-cpu', 'max']
+    if args.preflight:
+        command += ['-S', '-serial', 'none', '-qmp', 'stdio']
+    else:
+        command += ['-drive', f'file={dist}/image/h-image.raw,format=raw,if=virtio,snapshot=on', '-serial', 'stdio']
+    with log_path.open('wb') as log:
+        vm = subprocess.Popen(command, stderr=log,
+                              stdout=subprocess.PIPE if args.preflight else log,
+                              stdin=subprocess.PIPE if args.preflight else subprocess.DEVNULL)
+        try:
+            if args.preflight:
+                requests = b'\n'.join(json.dumps({'execute': c}).encode() for c in
+                                      ['qmp_capabilities', 'query-status', 'quit']) + b'\n'
+                output, _ = vm.communicate(requests, timeout=15)
+                log.write(output)
+                replies = [json.loads(line) for line in output.splitlines() if line.strip()]
+                require(vm.returncode == 0 and any(r.get('return', {}).get('status') in
+                        ('prelaunch', 'paused') for r in replies), 'UEFI/QEMU preflight failed')
+                print('UEFI/QEMU preflight passed')
+            else:
+                deadline = time.monotonic() + 360
+                while time.monotonic() < deadline:
+                    require(vm.poll() is None, 'UEFI guest exited; see dist/boot.log')
+                    text = log_path.read_text(errors='replace')
+                    plain = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+                    require(not re.search(r'Failed to start (?:h-image-ready|docker|containerd)\.serv', plain),
+                            'a required guest service failed; serial output follows')
+                    if 'H_IMAGE_OS_READY: dm-verity root, Docker, Compose and TDX helper ready' in text:
+                        require('H_IMAGE_WORKLOAD_VERIFIED:' not in text, 'base OS unexpectedly launched an application')
+                        break
+                    time.sleep(2)
+                else:
+                    raise ValueError('OS readiness was not reached within six minutes; see dist/boot.log')
+                write_json(dist / 'boot-check.json', {
+                    'uefi_boot': 'passed', 'immutable_root': 'dm-verity/read-only',
+                    'runtime': ['docker', 'compose', 'tdx-extend'], 'application_embedded': False,
+                    'workload_execution': 'not exercised; base OS has no selected workload',
+                    'tdx_hardware_qualification': 'not performed by ordinary QEMU',
+                })
+                print('UEFI base OS boot passed')
+        except Exception:
+            log.flush()
+            tail = '\n'.join(log_path.read_text(errors='replace').splitlines()[-80:])
+            tail = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', tail)
+            print('Guest boot log (last 80 lines):\n' + tail, file=sys.stderr, flush=True)
+            raise
+        finally:
+            if vm.poll() is None:
+                vm.terminate()
+                try:
+                    vm.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    vm.kill()
+                    vm.wait()

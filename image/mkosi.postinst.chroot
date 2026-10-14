@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+systemctl enable systemd-networkd systemd-resolved systemd-timesyncd docker h-image-ready h-image-evidence h-image-workload
+systemctl mask ssh.service ssh.socket sshd.service serial-getty@ttyS0.service \
+  getty@tty1.service debug-shell.service emergency.service rescue.service \
+  cloud-init.service cloud-init-local.service cloud-init-network.service cloud-init-main.service \
+  cloud-config.service cloud-final.service google-startup-scripts.service \
+  google-guest-agent.service apt-daily.service apt-daily-upgrade.service swap.target
+passwd --lock root
+truncate --size 0 /etc/machine-id
+mkdir -p /var/lib/dbus
+install -d -m 0700 /mnt/config /mnt/workload
+ln -sf /etc/machine-id /var/lib/dbus/machine-id
+grep -q '^CONFIG_INTEL_TDX_GUEST=y' /boot/config-*
+grep -Eq '^CONFIG_TDX_GUEST_DRIVER=[ym]' /boot/config-*
+test -x /usr/lib/h-image/tdx-extend
+test -x /usr/lib/h-image/load-workload
+test -x /usr/lib/h-image/check-runtime
+test -s /usr/lib/h-image/export-evidence
+test -s /usr/lib/h-image/os-build.json
+test ! -e /usr/lib/hiro/proxy.tar
+test ! -e /usr/lib/hiro/runtime.env
+chown -R root:root /usr/lib/h-image

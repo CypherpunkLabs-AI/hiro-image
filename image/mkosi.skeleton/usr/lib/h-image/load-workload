@@ -1,0 +1,93 @@
+#!/usr/bin/python3
+"""Execute only the workload archive bound into this deployment's measured UKI."""
+import hashlib
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import subprocess
+import tarfile
+
+BASE = Path('/run/h-image')
+STAGING = BASE / 'workload'
+
+
+def run(*args):
+    subprocess.run(args, check=True)
+
+
+def main():
+    parameters = [p.split('=', 1)[1] for p in Path('/proc/cmdline').read_text().split()
+                  if p.startswith('h-image.workload_sha256=')]
+    if len(parameters) != 1 or not re.fullmatch('[0-9a-f]{64}', parameters[0]):
+        raise ValueError('exactly one workload SHA-256 must be embedded in the UKI')
+    # A released workload never runs in the ordinary QEMU OS boot check.
+    run('modprobe', 'configfs')
+    if not os.path.ismount('/sys/kernel/config'):
+        run('mount', '-t', 'configfs', 'configfs', '/sys/kernel/config')
+    subprocess.run(['modprobe', 'tdx_guest'], check=False)
+    report = Path('/sys/kernel/config/tsm/report/h-image-startup')
+    try:
+        report.mkdir()
+        if (report / 'provider').read_text().strip() != 'tdx_guest':
+            raise ValueError('TDX quote provider required')
+        challenge = os.urandom(64)
+        (report / 'inblob').write_bytes(challenge)
+        quote = (report / 'outblob').read_bytes()
+        if (len(quote) < 632 or quote[:2] != b'\x04\x00'
+                or quote[4:8] != b'\x81\x00\x00\x00'
+                or quote[168] & 1 or quote[568:632] != challenge):
+            raise ValueError('non-debug TDX v4 quote with the startup challenge required')
+    finally:
+        if report.exists():
+            report.rmdir()
+    # Remote quote verification remains the recipient's responsibility. This
+    # local precondition is not a DCAP verification or a platform endorsement.
+    for path in ('/mnt/workload', '/mnt/config'):
+        if not os.path.ismount(path):
+            run('mount', path)
+    if not Path('/mnt/config/secrets.env').is_file():
+        raise ValueError('configuration disk must supply secrets.env (may be empty)')
+    if BASE.exists():
+        raise ValueError('workload already staged; reboot to change applications')
+    BASE.mkdir(mode=0o700)
+    run('mount', '-t', 'tmpfs', '-o', 'noswap,nosuid,nodev,mode=0700,size=40%', 'tmpfs', str(BASE))
+    archive = BASE / 'workload.tar'
+    # Hash the RAM copy we will execute, not a disk that can change after hashing.
+    with Path('/mnt/workload/workload.tar').open('rb') as src, archive.open('xb') as dst:
+        shutil.copyfileobj(src, dst, 1024 * 1024)
+    with archive.open('rb') as stream:
+        actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+    if actual != parameters[0]:
+        raise ValueError('workload archive differs from measured launch configuration')
+    STAGING.mkdir(mode=0o700)
+    with tarfile.open(archive, mode='r:') as bundle:
+        members = bundle.getmembers()
+        names = set()
+        for member in members:
+            name = PurePosixPath(member.name)
+            if (name.is_absolute() or '..' in name.parts or str(name) in ('.', '')
+                    or str(name) in names or not (member.isdir() or member.isfile())):
+                raise ValueError('workload must contain unique regular files/directories only')
+            names.add(str(name))
+            member.uid = member.gid = 0
+            member.uname = member.gname = 'root'
+            member.mode &= 0o755
+        bundle.extractall(STAGING, members=members, filter='data')
+    archive.unlink()
+    if not (STAGING / 'start').is_file():
+        raise ValueError('workload must contain a start shell script')
+    print('H_IMAGE_WORKLOAD_VERIFIED: ' + actual, flush=True)
+    os.chdir(STAGING)
+    # No .env files, metadata commands, or config-disk scripts are sourced here.
+    # start is application code protected by the workload archive hash.
+    environment = {
+        'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8',
+        'H_IMAGE_WORKLOAD_DIR': str(STAGING), 'H_IMAGE_CONFIG_DIR': '/mnt/config',
+        'H_IMAGE_WORKLOAD_SHA256': actual,
+    }
+    os.execve('/bin/sh', ['/bin/sh', str(STAGING / 'start')], environment)
+
+
+if __name__ == '__main__':
+    main()

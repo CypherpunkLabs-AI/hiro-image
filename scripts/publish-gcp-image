@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Publish this workflow's authenticated OS artifacts as a READY GCP custom image."""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+from image_lib import ROOT, checksums, digest, require, run, write_json
+
+
+def validate(directory, environment):
+    manifest = json.loads((directory / 'os-release.json').read_text())
+    commit = environment['GITHUB_SHA']
+    require(re.fullmatch('[0-9a-f]{40}', commit), 'invalid workflow commit')
+    require(manifest.get('kind') == 'h-image.os-release.v1', 'wrong OS manifest')
+    require(manifest['source_commit'] == commit and manifest['workflow_commit'] == environment['GITHUB_WORKFLOW_SHA'],
+            'OS does not belong to this workflow/source commit')
+    require(manifest['source_repository'] == environment['GITHUB_REPOSITORY']
+            and manifest['source_ref'] == environment['GITHUB_REF'], 'OS repository/ref mismatch')
+    require(environment['GITHUB_EVENT_NAME'] in ('push', 'workflow_dispatch')
+            and (environment['GITHUB_REF'] == 'refs/heads/main'
+                 or re.fullmatch(r'refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', environment['GITHUB_REF'])),
+            'only main or version-tag workflows may publish')
+    require('h-image-gcp.tar.gz' in manifest['files'], 'OS disk archive missing from manifest')
+    for name, entry in manifest['files'].items():
+        require(Path(name).name == name and name not in ('.', '..'), 'invalid artifact name')
+        path = directory / name
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size == entry['size']
+                and digest(path) == entry['sha256'], 'OS artifact differs from signed manifest: ' + name)
+    require((directory / 'os-release.sigstore.json').is_file(), 'OS signature bundle missing')
+    return manifest
+
+
+def main():
+    project = os.environ['GCP_PROJECT_ID']
+    bucket = os.environ['GCP_IMAGE_BUCKET']
+    require(re.fullmatch('[a-z][a-z0-9-]{4,61}[a-z0-9]', project), 'invalid GCP project')
+    require(re.fullmatch('[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]', bucket), 'use a bucket name without gs://')
+    directory = ROOT / 'dist/publish'
+    manifest = validate(directory, os.environ)
+    run('gh', 'attestation', 'verify', directory / 'os-release.json',
+        '--bundle', directory / 'os-release.sigstore.json', '--repo', manifest['source_repository'],
+        '--signer-workflow', manifest['source_repository'] + '/.github/workflows/image.yml',
+        '--signer-digest', manifest['workflow_commit'], '--source-digest', manifest['source_commit'],
+        '--source-ref', manifest['source_ref'], '--predicate-type', 'https://slsa.dev/provenance/v1',
+        '--deny-self-hosted-runners')
+    attempt = os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+    require(re.fullmatch('[0-9]+-[0-9]+', attempt), 'invalid workflow run/attempt')
+    name = 'h-image-' + manifest['source_commit'][:12] + '-' + attempt
+    require(len(name) <= 63, 'image name too long')
+    prefix = f'gs://{bucket}/h-image/{manifest["source_commit"]}/{attempt}'
+    # Each run/attempt has its own immutable object names; no overwrite/delete permission needed.
+    for filename in sorted(set(manifest['files']) | {'os-release.json', 'os-release.sigstore.json', 'SHA256SUMS'}):
+        run('gcloud', 'storage', 'cp', '--if-generation-match=0', directory / filename, prefix + '/' + filename)
+    run('gcloud', 'compute', 'images', 'create', name, '--project=' + project,
+        '--source-uri=' + prefix + '/h-image-gcp.tar.gz', '--architecture=X86_64',
+        '--guest-os-features=' + ','.join(manifest['guest_os_features']),
+        '--licenses=' + ','.join(manifest['licenses']), '--storage-location=us',
+        '--description=h-image OS build ' + manifest['source_commit'],
+        '--labels=application=h-image,source-commit=' + manifest['source_commit'], '--quiet')
+    result = json.loads(subprocess.check_output([
+        'gcloud', 'compute', 'images', 'describe', name, '--project=' + project, '--format=json']))
+    require(result['status'] == 'READY', 'GCP custom image is not READY')
+    require(set(manifest['guest_os_features']) <= {item['type'] for item in result['guestOsFeatures']},
+            'GCP image is missing required boot features')
+    require(set(manifest['licenses']) <= set(result.get('licenses', [])), 'GCP image lost its OS license')
+    record = {'project': project, 'image': name, 'image_id': result['id'], 'self_link': result['selfLink'],
+              'artifacts': prefix, 'status': 'READY', 'hardware_boot_verified': False}
+    write_json(directory / 'gcp-image.json', record)
+    run('gcloud', 'storage', 'cp', '--if-generation-match=0', directory / 'gcp-image.json', prefix + '/gcp-image.json')
+    checksums(directory)
+    with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+        summary.write(f'## GCP custom image ready\n\nProject: `{project}`\n\nImage: `{name}`\n\n')
+        summary.write('Select this image under **Boot disk → Custom images**.\n\n')
+        summary.write('For evidence collection, create a TDX VM with Secure Boot disabled and a fresh '
+                      '`h-image-evidence-nonce` metadata value. No workload or secrets disk is needed. '
+                      'See the README for collection commands. GCP registration does not qualify the platform.\n')
+    print(json.dumps(record))
+
+
+if __name__ == '__main__':
+    main()

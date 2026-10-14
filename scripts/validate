@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Validate source/configuration without building an image or fetching dependencies."""
+import ast
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+from image_lib import ROOT, require, version
+from platform_measurements import PROFILE, load_profile
+
+value = version()
+load_profile(ROOT / 'platform' / PROFILE, check_evidence=True)
+ref = os.environ.get('GITHUB_REF', '')
+if ref.startswith('refs/tags/'):
+    require(ref == 'refs/tags/v' + value, 'release tag must match VERSION')
+lock = json.loads((ROOT / 'flake.lock').read_text())
+require(re.fullmatch('[0-9a-f]{40}', (ROOT / 'image/tdx-tools-revision').read_text().strip()), 'invalid helper pin')
+require(lock['nodes']['nixpkgs']['locked']['rev'] in (ROOT / 'flake.nix').read_text(), 'Nix builder pin and lock disagree')
+for path in list((ROOT / 'scripts').iterdir()) + list((ROOT / 'image/mkosi.skeleton/usr/lib/h-image').iterdir()):
+    if path.is_file():
+        ast.parse(path.read_text(), filename=str(path))
+for path in [ROOT / 'image/mkosi.postinst.chroot', ROOT / 'image/mkosi.finalize',
+             ROOT / 'image/mkosi.images/initrd/mkosi.finalize']:
+    subprocess.run(['bash', '-n', str(path)], check=True)
+snapshot = 'https://snapshot.ubuntu.com/ubuntu/20261009T000000Z'
+require(snapshot in (ROOT / 'image/mkosi.conf').read_text() and snapshot in
+        (ROOT / 'image/mkosi.pkgmngr/etc/apt/sources.list.d/mkosi.sources').read_text(), 'Ubuntu snapshot pins disagree')
+require(not (ROOT / 'images.lock.json').exists() and not (ROOT / 'compose.yaml').exists(),
+        'OS build must not select the application release')
+print('OS source/configuration valid, version ' + value)

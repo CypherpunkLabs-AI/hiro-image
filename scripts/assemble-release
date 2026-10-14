@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Pair a verified OS release with a separately supplied workload; rebuild only its UKI."""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tarfile
+from boot_measurements import measure_gpt, measure_pe
+from platform_measurements import PROFILE, appraisal
+from image_lib import (ROOT, ESP, ROOT_PARTITION, VERITY, archive_disk, checksums, copy_partition,
+                       digest, partitions, require, run, write_json)
+
+loader = importlib.machinery.SourceFileLoader('select_os', str(ROOT / 'scripts/select-os'))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+select_os = importlib.util.module_from_spec(spec)
+loader.exec_module(select_os)
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--os-directory', type=Path, required=True)
+parser.add_argument('--os-repository', required=True)
+parser.add_argument('--os-version', required=True)
+parser.add_argument('--workload', type=Path, required=True, help='Uncompressed tar archive with a start shell script')
+parser.add_argument('--output', type=Path, required=True)
+args = parser.parse_args()
+base = args.os_directory.resolve()
+manifest = select_os.verify(base, args.os_repository, args.os_version)
+require(not args.output.exists(), 'output directory must not exist')
+out = args.output.resolve()
+out.mkdir(parents=True)
+require(args.workload.is_file(), 'workload archive missing')
+with tarfile.open(args.workload, mode='r:') as archive:
+    members = archive.getmembers()
+    names = set()
+    for member in members:
+        name = Path(member.name)
+        require(not name.is_absolute() and '..' not in name.parts and str(name) not in ('.', '')
+                and str(name) not in names and (member.isfile() or member.isdir()), 'unsafe workload archive')
+        names.add(str(name))
+    require(any(m.name == 'start' and m.isfile() for m in members), 'workload archive must contain start')
+shutil.copyfile(args.workload, out / 'workload.tar')
+workload_hash = digest(out / 'workload.tar')
+disk = out / 'disk.raw'
+with tarfile.open(base / 'h-image-gcp.tar.gz', 'r:gz') as archive:
+    members = archive.getmembers()
+    require(len(members) == 1 and members[0].name == 'disk.raw'
+            and members[0].isfile() and members[0].size == manifest['disk']['size'], 'invalid OS disk archive')
+    archive.extractall(out, filter='data')
+require(digest(disk) == manifest['disk']['sha256'], 'OS disk does not match the signed base release')
+cmdline = (base / 'cmdline').read_text().strip()
+require('h-image.workload_sha256' not in cmdline, 'base image already selects a workload')
+cmdline += ' h-image.workload_sha256=' + workload_hash
+(out / 'cmdline').write_text(cmdline + '\n')
+run('ukify', 'build', '--linux=' + str(base / 'vmlinuz'), '--initrd=' + str(base / 'initrd'),
+    '--stub=' + str(base / 'linuxx64.efi.stub'), '--os-release=@' + str(base / 'os-release'),
+    '--uname=' + (base / 'uname').read_text().strip(), '--cmdline=@' + str(out / 'cmdline'),
+    '--output=' + str(out / 'deployment.efi'))
+pe_hash, sections = measure_pe((out / 'deployment.efi').read_bytes())
+require(sections['.linux'] == (base / 'vmlinuz').read_bytes()
+        and sections['.initrd'] == (base / 'initrd').read_bytes(), 'UKI changed the selected kernel/initrd')
+require(sections['.cmdline'].rstrip(b'\0').decode().strip() == cmdline, 'UKI did not bind the selected workload')
+parts = partitions(disk)
+run('mcopy', '-o', '-i', f'{disk}@@{parts[ESP]["start"] * 512}', out / 'deployment.efi', '::/EFI/BOOT/BOOTX64.EFI')
+# UKI replacement may touch only the ESP. Check the immutable OS and verity
+# partitions explicitly before publishing a new application deployment.
+for kind, name in [(ROOT_PARTITION, 'root'), (VERITY, 'verity')]:
+    temporary = out / (name + '.partition')
+    copy_partition(disk, parts[kind], temporary)
+    require(digest(temporary) == manifest['disk']['partitions_sha256'][name], 'OS partition changed')
+    temporary.unlink()
+gpt = measure_gpt(disk)
+require(gpt == manifest['boot']['gpt_event'], 'application release must preserve the OS GPT')
+archive_disk(disk, out / 'deployment-gcp.tar.gz')
+# A separate disk contains the authenticated application bytes. No credentials
+# are accepted by this tool or written to a public release artifact.
+staging = out / 'workload-disk-content'
+staging.mkdir()
+shutil.copyfile(out / 'workload.tar', staging / 'workload.tar')
+workload_disk = out / 'workload.raw'
+with workload_disk.open('wb') as stream:
+    gib = 1024 ** 3
+    stream.truncate(((args.workload.stat().st_size + 128 * 1024 ** 2 + gib - 1) // gib) * gib)
+run('mkfs.ext4', '-q', '-F', '-L', 'hiro-workload', '-d', staging, workload_disk)
+shutil.rmtree(staging)
+archive_disk(workload_disk, out / 'workload-disk.tar.gz')
+for name in ['os-release.json', 'os-release.sigstore.json', PROFILE]:
+    shutil.copyfile(base / name, out / name)
+require(PROFILE in manifest['files'], 'selected OS did not authenticate a platform profile')
+platform_appraisal = appraisal(out / PROFILE, gpt, pe_hash, sections, base / 'linuxx64.efi.stub')
+release = {
+    'schema': 1, 'kind': 'h-image.deployment.v1', 'workload_contract': 'h-image.workload.v1',
+    'os': {'repository': args.os_repository, 'tag': args.os_version,
+           'source_commit': manifest['source_commit'], 'manifest_sha256': digest(base / 'os-release.json')},
+    'workload_sha256': workload_hash, 'boot': {
+        'dm_verity_root_hash': manifest['boot']['dm_verity_root_hash'], 'kernel_command_line': cmdline,
+        'secure_boot': False, 'gpt_event': gpt, 'uki_pe_coff_sha384': pe_hash},
+    'guest_os_features': manifest['guest_os_features'], 'licenses': manifest['licenses'],
+    'files': {name: digest(out / name) for name in ['deployment-gcp.tar.gz', 'deployment.efi',
+              'cmdline', 'workload.tar', 'workload-disk.tar.gz', 'os-release.json', 'os-release.sigstore.json', PROFILE]},
+    'platform_appraisal': platform_appraisal,
+}
+write_json(out / 'deployment.json', release)
+disk.unlink()
+workload_disk.unlink()
+checksums(out)
+print('Assembled selected OS and separate workload. The application release job must sign deployment.json.')

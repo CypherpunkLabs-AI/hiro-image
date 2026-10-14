@@ -1,0 +1,117 @@
+{
+  "architecture": "x86_64",
+  "boot": {
+    "dm_verity_root_hash": "7a9d17ba029980f366c78ae9306a24d44f17a066e37e0aa9db154d353f04394e",
+    "gpt_event": {
+      "disk_guid": "93d5f617-c0bc-425a-b13d-24817f2f0286",
+      "esp_size_lba": 532480,
+      "esp_start_lba": 2048,
+      "event_bytes": 484,
+      "partition_count": 3,
+      "sector_size": 512,
+      "sha384": "618639c0840269c83f1db1af0c6fd305ea159a0c57e8d4c7ff6a58c511e93731fc052475973080ac83d9ea775df2fe55"
+    },
+    "kernel_command_line": "console=ttyS0 ro panic=10 systemd.show_status=yes roothash=7a9d17ba029980f366c78ae9306a24d44f17a066e37e0aa9db154d353f04394e",
+    "sections_sha256": {
+      ".cmdline": "e7c62e590c3600dfa6790c75bd47ed0af6f70b071777f37b9845c016202edf3a",
+      ".initrd": "1fe280b9d38756776aa58ae4bbf8b189175b6779228457b2a5713fa72ea4b045",
+      ".linux": "6c6fedb7573d36db1e655569d51925089e88d964814b9ba43ae41eaee0be55b7"
+    },
+    "secure_boot": false,
+    "uki_pe_coff_sha384": "6adb35b74f88a5122c2522313af44f6a6db6d4b027719f18b14d567d7dd34a7171473295034ea582880520c81878abd8"
+  },
+  "build_workflow": ".github/workflows/image.yml",
+  "configuration": {
+    "embedded_credentials": false,
+    "environment_file": "/mnt/config/secrets.env",
+    "filesystem_label": "hiro-config"
+  },
+  "disk": {
+    "partitions_sha256": {
+      "root": "c32e89782b87362525fee708ca0b6d20e9aef8a5e7a10ea42d5ac209ca723d8a",
+      "verity": "893374f88fa8e694a2dd6d996a5e599111d07393ee7af4226fde40afb6d3d9a8"
+    },
+    "sha256": "e1b48cd0e8770086e7a5b0ab42b74ebc6ff363ba6e37c37c29d2c5c97e6b4ffb",
+    "size": 1073741824
+  },
+  "distribution": "ubuntu",
+  "distribution_release": "resolute",
+  "files": {
+    "boot-check.json": {
+      "sha256": "3277927d2670322c44df0019936f87cdc0489068a01eb63c0a7543d94d8d1090",
+      "size": 311
+    },
+    "cmdline": {
+      "sha256": "7c93a382a9505bd2532ec3894986293d5c782cd31de54452afc936776af2067f",
+      "size": 123
+    },
+    "h-image-gcp.tar.gz": {
+      "sha256": "47d78ee66e0ecd07be31bb24d87aa52abaff8c73fc68db8bfc64c48043592ee3",
+      "size": 441506345
+    },
+    "h-image.efi": {
+      "sha256": "fc5c9b985ec561d8d1b51b57fd26085c1c94052c7ebffcfc8e8bea174690f957",
+      "size": 57919488
+    },
+    "image-tools.tar.gz": {
+      "sha256": "c8f39f620f704a1e81484dc5dfc297ddc5a0e6a16fec72b9a4163ee7e7289515",
+      "size": 28499
+    },
+    "initrd": {
+      "sha256": "1fe280b9d38756776aa58ae4bbf8b189175b6779228457b2a5713fa72ea4b045",
+      "size": 40314132
+    },
+    "linuxx64.efi.stub": {
+      "sha256": "81860e6a527c0cff65c8c8c238618b86c97397a6d2e7680eac3586f5cc811240",
+      "size": 118784
+    },
+    "os-release": {
+      "sha256": "240dabe3f35f6764d9144818bfa81fa7f64b062ec30458d687f3e07290f3136f",
+      "size": 429
+    },
+    "packages.json": {
+      "sha256": "77f9d5c257657a6d49e5ada4b22acbe33959a0db5533f021d689bc28523584a2",
+      "size": 19107
+    },
+    "uname": {
+      "sha256": "cc56941400c35e89346e158e90de840b07e23dfc76af3e6eb0f1cb324abb0234",
+      "size": 14
+    },
+    "vmlinuz": {
+      "sha256": "6c6fedb7573d36db1e655569d51925089e88d964814b9ba43ae41eaee0be55b7",
+      "size": 17504648
+    }
+  },
+  "guest_os_features": [
+    "TDX_CAPABLE",
+    "UEFI_COMPATIBLE",
+    "GVNIC",
+    "VIRTIO_SCSI_MULTIQUEUE"
+  ],
+  "kind": "h-image.os-release.v1",
+  "licenses": [
+    "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2604-lts"
+  ],
+  "nix_lock_sha256": "6e7d12ab099dd5df29691985c7f9cec8dc3236f6f83e52ed0875911ac977ef6b",
+  "platform_appraisal": {
+    "reason": "MRTD and firmware event references belong to the qualified deployment platform",
+    "status": "not-included"
+  },
+  "schema": 1,
+  "source_commit": "ab3303529d586efff5c2982559c757b67bd70a34",
+  "source_ref": "refs/heads/main",
+  "source_repository": "CypherpunkLabs-AI/hiro-vm-image",
+  "tag": "v0.1.0",
+  "tdx_tools_revision": "b0a2dd8100a04a52310c6f7869dbc14297e39e8b",
+  "ubuntu_snapshot": "20261009T000000Z",
+  "version": "0.1.0",
+  "workflow_commit": "ab3303529d586efff5c2982559c757b67bd70a34",
+  "workload": {
+    "archive": "/mnt/workload/workload.tar",
+    "contract": "h-image.workload.v1",
+    "embedded": false,
+    "entrypoint": "start",
+    "filesystem_label": "hiro-workload",
+    "kernel_parameter": "h-image.workload_sha256"
+  }
+}

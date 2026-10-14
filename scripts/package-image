@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Package a reusable OS release, independently of any application."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tarfile
+import tempfile
+from boot_measurements import measure_gpt, measure_pe
+from platform_measurements import PROFILE, appraisal, load_profile
+from image_lib import (ROOT, ESP, ROOT_PARTITION, VERITY, archive_disk, checksums,
+                       copy_partition, digest, partitions, require, run, version, write_json)
+
+dist = ROOT / 'dist'
+disk = dist / 'image/h-image.raw'
+out = dist / 'publish'
+require(not out.exists(), 'publish directory already exists; use a clean build')
+out.mkdir()
+parts = partitions(disk)
+require(disk.stat().st_size % (1024 ** 3) == 0, 'boot-check must finalize the GCP disk before packaging')
+gpt = measure_gpt(disk)
+uki = out / 'h-image.efi'
+run('mcopy', '-i', f'{disk}@@{parts[ESP]["start"] * 512}', '::/EFI/BOOT/BOOTX64.EFI', uki)
+pe_hash, sections = measure_pe(uki.read_bytes())
+for section, name in [('linux', 'vmlinuz'), ('initrd', 'initrd'), ('cmdline', 'cmdline'),
+                      ('osrel', 'os-release'), ('uname', 'uname')]:
+    run('objcopy', '--dump-section', f'.{section}={out / name}', uki)
+for name in ('cmdline', 'os-release', 'uname'):
+    p = out / name
+    p.write_bytes(p.read_bytes().rstrip(b'\0'))
+cmdline = (out / 'cmdline').read_text()
+root_hashes = re.findall(r'(?:^|\s)roothash=([0-9a-f]{64})(?=\s|$)', cmdline)
+require(len(root_hashes) == 1 and 'h-image.workload_sha256' not in cmdline,
+        'base OS must bind its root hash and must not select an application')
+partition_hashes = {}
+with tempfile.TemporaryDirectory(prefix='h-image-verity-') as temporary:
+    tmp = Path(temporary)
+    for kind, name in [(ROOT_PARTITION, 'root'), (VERITY, 'verity')]:
+        copy_partition(disk, parts[kind], tmp / name)
+        partition_hashes[name] = digest(tmp / name)
+    run('veritysetup', 'verify', tmp / 'root', tmp / 'verity', root_hashes[0])
+    # Export the exact guest systemd stub so application releases can rebuild
+    # only the UKI, preserving this OS's kernel/initrd/stub and root filesystem.
+    with (out / 'linuxx64.efi.stub').open('wb') as output:
+        run('unsquashfs', '-cat', tmp / 'root', 'usr/lib/systemd/boot/efi/linuxx64.efi.stub', stdout=output)
+inventory = dist / 'image/h-image.manifest'
+require(inventory.is_file(), 'mkosi package inventory missing')
+json.loads(inventory.read_text())
+shutil.copyfile(inventory, out / 'packages.json')
+boot = json.loads((dist / 'boot-check.json').read_text())
+require(boot.get('uefi_boot') == 'passed', 'base OS boot check must pass before packaging')
+shutil.copyfile(dist / 'boot-check.json', out / 'boot-check.json')
+archive_disk(disk, out / 'h-image-gcp.tar.gz')
+profile_path = ROOT / 'platform' / PROFILE
+load_profile(profile_path, check_evidence=True)
+shutil.copyfile(profile_path, out / PROFILE)
+with tarfile.open(out / 'platform-evidence.tar.gz', mode='w:gz') as archive:
+    archive.add(ROOT / 'platform/evidence', arcname='evidence')
+platform_appraisal = appraisal(out / PROFILE, gpt, pe_hash, sections, out / 'linuxx64.efi.stub')
+# Include the matching consumer tools with each release, not an unpinned script
+# downloaded from a moving branch in a later application build.
+tool_paths = ['flake.nix', 'flake.lock', 'VERSION', 'README.md', 'LICENSE',
+              'docs/workload-contract.md', 'scripts/image_lib.py', 'scripts/boot_measurements.py',
+              'scripts/platform_measurements.py',
+              'scripts/select-os', 'scripts/assemble-release', 'scripts/collect-evidence']
+with tarfile.open(out / 'image-tools.tar.gz', mode='w:gz') as archive:
+    for name in tool_paths:
+        archive.add(ROOT / name, arcname=name)
+identity = json.loads((ROOT / 'image/mkosi.extra/usr/lib/h-image/os-build.json').read_text())
+workflow_commit = os.environ.get('GITHUB_WORKFLOW_SHA', identity['source_commit'])
+manifest = {
+    'schema': 1, 'kind': 'h-image.os-release.v1', 'version': version(), 'tag': 'v' + version(),
+    'source_repository': os.environ.get('GITHUB_REPOSITORY'),
+    'source_commit': identity['source_commit'],
+    'source_ref': os.environ.get('GITHUB_REF', 'local'), 'workflow_commit': workflow_commit,
+    'build_workflow': '.github/workflows/image.yml',
+    'architecture': 'x86_64', 'distribution': 'ubuntu', 'distribution_release': 'resolute',
+    'ubuntu_snapshot': '20261009T000000Z', 'nix_lock_sha256': digest(ROOT / 'flake.lock'),
+    'tdx_tools_revision': identity['tdx_tools_revision'],
+    'files': {p.name: {'sha256': digest(p), 'size': p.stat().st_size} for p in sorted(out.iterdir())},
+    'disk': {'sha256': digest(disk), 'size': disk.stat().st_size, 'partitions_sha256': partition_hashes},
+    'boot': {'dm_verity_root_hash': root_hashes[0], 'kernel_command_line': cmdline, 'secure_boot': False,
+             'gpt_event': gpt, 'uki_pe_coff_sha384': pe_hash,
+             'sections_sha256': {k: hashlib.sha256(v).hexdigest() for k, v in sections.items()}},
+    'platform_appraisal': platform_appraisal,
+    'guest_os_features': ['TDX_CAPABLE', 'UEFI_COMPATIBLE', 'GVNIC', 'VIRTIO_SCSI_MULTIQUEUE'],
+    'licenses': ['https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/licenses/ubuntu-2604-lts'],
+    'workload': {'contract': 'h-image.workload.v1', 'embedded': False,
+                 'kernel_parameter': 'h-image.workload_sha256', 'filesystem_label': 'hiro-workload',
+                 'archive': '/mnt/workload/workload.tar', 'entrypoint': 'start'},
+    'configuration': {'filesystem_label': 'hiro-config', 'environment_file': '/mnt/config/secrets.env',
+                       'embedded_credentials': False},
+}
+write_json(out / 'os-release.json', manifest)
+checksums(out)
+print('Packaged reusable OS v' + version())

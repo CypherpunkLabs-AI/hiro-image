@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Build pinned guest helpers and stage public OS identity only."""
+import os
+import re
+import shutil
+import subprocess
+from image_lib import ROOT, require, run, version, write_json
+
+revision = (ROOT / 'image/tdx-tools-revision').read_text().strip()
+require(re.fullmatch('[0-9a-f]{40}', revision), 'invalid TDX helper revision')
+commit = os.environ.get('GITHUB_SHA') or subprocess.check_output(
+    ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+require(re.fullmatch('[0-9a-f]{40}', commit), 'source commit required')
+target = ROOT / 'image/mkosi.extra/usr/lib/h-image'
+require(not target.exists(), 'staged tree exists; remove image/mkosi.extra before a new build')
+target.mkdir(parents=True)
+tools = ROOT / 'dist/tools'
+tools.mkdir(parents=True, exist_ok=True)
+env = dict(os.environ, GOBIN=str(tools), CGO_ENABLED='0', GOOS='linux', GOARCH='amd64',
+           GOFLAGS='', GOTOOLCHAIN='local')
+run('go', 'install', '-trimpath', '-buildmode=exe', '-ldflags=-linkmode=internal',
+    'github.com/google/go-tdx-guest/tools/extend@' + revision, env=env)
+headers = subprocess.check_output(['readelf', '--program-headers', '--wide', str(tools / 'extend')], text=True)
+require(not any(line.split() and line.split()[0] in ('INTERP', 'DYNAMIC') for line in headers.splitlines()),
+        'TDX helper must not depend on a Nix store ELF interpreter')
+shutil.copyfile(tools / 'extend', target / 'tdx-extend')
+(target / 'tdx-extend').chmod(0o755)
+write_json(target / 'os-build.json', {'schema': 1, 'version': version(), 'source_commit': commit,
+                                   'workload_contract': 'h-image.workload.v1', 'tdx_tools_revision': revision})
+print('Staged OS identity and pinned TDX helper; no workload or credentials')

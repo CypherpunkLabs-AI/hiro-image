@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "kind": "h-image.gcp-tdx-platform.v1",
+  "id": "gcp-c3-standard-4-20261014",
+  "mrtd": "c1ee9c16e3afc506cfe042c5b846a368528f3b37618eafb27469bc114cf914e9222c91618470e7f2b28ac360968270a5",
+  "launch": {
+    "provider": "GCP",
+    "zone": "us-central1-a",
+    "machine_type": "c3-standard-4",
+    "confidential_instance_type": "TDX",
+    "secure_boot": false,
+    "vtpm": true,
+    "integrity_monitoring": true,
+    "nic_type": "GVNIC",
+    "boot_disk_interface": "NVME",
+    "reference_disk_count": 1,
+    "reference_boot_disk_gib": 10
+  },
+  "scope": "Qualified base OS boot. Additional disks or changed launch settings require comparison against these references; they are not qualified by this single-disk capture.",
+  "firmware": {
+    "reference_url": "https://storage.googleapis.com/gce_tcb_integrity/ovmf_x64_csm/tdx/c1ee9c16e3afc506cfe042c5b846a368528f3b37618eafb27469bc114cf914e9222c91618470e7f2b28ac360968270a5.binarypb",
+    "sha256": "9bb40f84dd373261baba826c05a3fa2f3f88471f713bdebb2f537764d1c96471",
+    "google_tcb_root_sha256": "e876bc6978bf4f3da445f98a0a82363c8c0bae5a1fc033c6df65846a6cb0f18c",
+    "firmware_sha384": "53c558fe06714203d7428484c46ee7c0b9df748a9789e173421c28d097115b30efb8476304617532488ab40c3122db88",
+    "firmware_binary_url": "https://storage.googleapis.com/gce_tcb_integrity/ovmf_x64_csm/53c558fe06714203d7428484c46ee7c0b9df748a9789e173421c28d097115b30efb8476304617532488ab40c3122db88.fd",
+    "tdx_svn": 2,
+    "memory_gib": 0,
+    "early_accept": false
+  },
+  "firmware_ram_note": "The signed endorsement entry has ram_gib=0. It authenticates this MRTD; this is not an endorsement of the separately reported VM RAM size.",
+  "quote_requirements": {
+    "verification_status": "UpToDate",
+    "allowed_advisory_ids": [],
+    "debug": false,
+    "mr_seam": "ab62561a173acbd18ee50ff37750db44184c6cf5e886df74247cc575e163b04c34b9e18374757c235affa614d4127f6b",
+    "mr_signer_seam": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "seam_attributes": "0000000000000000",
+    "mr_config_id": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "rtmr0_events": [
+    {
+      "type": 2147483659,
+      "description": "TD HOB",
+      "sha384": "d587edd195019c7d650a7f6d2df37275e2fb2250d21770f02c4df72457b74dcd659d9974f645d708446ca9af192593b4"
+    },
+    {
+      "type": 2147483658,
+      "description": "configuration firmware volume",
+      "sha384": "4e1221cf6f7815beec39a994bff99142ed305210e2735b1134fc8ef363923cbdcca91fa71e2e25ee8e689fb7d2c075bf"
+    },
+    {
+      "type": 2147483649,
+      "description": "SecureBoot variable",
+      "sha384": "cfa4e2c606f572627bf06d5669cc2ab1128358d27b45bc63ee9ea56ec109cfafb7194006f847a6a74b5eaed6b73332ec"
+    },
+    {
+      "type": 2147483649,
+      "description": "PK variable",
+      "sha384": "a763553c9606770cd3a5e607f8e0c1ef01cdf2555af753fa3a1f6afe43eb7b2a0af4a6f80fd8e4dd10459668f3b011e0"
+    },
+    {
+      "type": 2147483649,
+      "description": "KEK variable",
+      "sha384": "fd111537e6c0f7ca64fd189ee784cde86214e8495dbc36cd0ccbb5006377d250ab352fe05378bac5a81fa3132c58851e"
+    },
+    {
+      "type": 2147483649,
+      "description": "db variable",
+      "sha384": "0968b4cf1dde5df9983f718588e67eca142ba481ba1e517e97c701e740641027ad891a7e9da539cae4e17df0a9d22322"
+    },
+    {
+      "type": 2147483649,
+      "description": "dbx variable",
+      "sha384": "4285252d954a0241a9788ee5c54ea6e0f1e0df7ff39c7c1ea81888cfd2d37a4b7888f38a2c0e0b6336df972ed6cbadd9"
+    },
+    {
+      "type": 4,
+      "description": "separator",
+      "sha384": "394341b7182cd227c5c6b07ef8000cdfd86136c4292b8e576573ad7ed9ae41019f5818b4b971c9effc60e1ad9f1289f0"
+    },
+    {
+      "type": 10,
+      "description": "ACPI data 1",
+      "sha384": "f60c35e53bb21b4675cfa8db310ec88e38cd369d8d463acdde815122fa8b893b8896a5783b538856693ed7645ddb897e"
+    },
+    {
+      "type": 10,
+      "description": "ACPI data 2",
+      "sha384": "509dcfe10beb5d470c40f25e30895370948831b9cf79db15d977e7bba8eb42f7200212071ad8b19d6011759779eced5a"
+    },
+    {
+      "type": 10,
+      "description": "ACPI data 3",
+      "sha384": "0bb0afa008873bdc20dee0f741da7896c2bfeee94ae52e9bdbf94bc87c32d04a4b1f1d824490f1dae574ff6d4e4bb0b3"
+    },
+    {
+      "type": 2147483650,
+      "description": "BootOrder variable",
+      "sha384": "7210af19145ec2a8e250a7fe8e9eeeac1301e524daab82366c36be614dc35402a289101e48cad61c45337f2f32c14fdc"
+    },
+    {
+      "type": 2147483650,
+      "description": "Boot0001 NVMe option",
+      "sha384": "a25333c7aec2e0993034938c7f11893b3c2bcaf67e88c342a3d586f6f7fae2c6a1247a9ed86988080a6d4be497d4fbb6"
+    },
+    {
+      "type": 2147483650,
+      "description": "Boot0000 UI application option",
+      "sha384": "23ada07f5261f12f34a0bd8e46760962d6b4d576a416f1fea1c64bc656b1d28eacf7047ae6e967c58fd2a98bfa74c298"
+    }
+  ],
+  "rtmr0": "c49d22aff6edb37cb6178defb05e0e2b512c26960e6ee73b1ea303365a31def807ab2ad71e5874236feca2ca552c6307",
+  "uki": {
+    "stub_sha256": "81860e6a527c0cff65c8c8c238618b86c97397a6d2e7680eac3586f5cc811240",
+    "section_order": [
+      ".linux",
+      ".osrel",
+      ".cmdline",
+      ".initrd",
+      ".uname",
+      ".sbat"
+    ],
+    "measurement": "systemd-stub section name including ASCII NUL, then virtual-size section bytes; SHA384 extensions into RTMR2"
+  },
+  "evidence": {
+    "verified_at": "2026-10-14T09:32:19+00:00",
+    "source_commit": "ab3303529d586efff5c2982559c757b67bd70a34",
+    "source_repository": "CypherpunkLabs-AI/hiro-vm-image",
+    "source_ref": "refs/heads/main",
+    "hardware_verifier": "dcap-qvl 0.6.5",
+    "collateral_source": "https://api.trustedservices.intel.com",
+    "image_verifier": "GitHub CLI 2.102.0 gh attestation verify; exact repository, workflow, source/workflow commit and ref; GitHub-hosted runners only",
+    "files": {
+      "ccel-replay.json": "4f820a6c9d5e85896ab75c30a847a6a5a4396eb2729d4f2f0ee168a6f12a5f04",
+      "ccel-table.bin": "c716398993cc26ddb97450072db1970cb6c7e102f0e3666a0b8f873204324829",
+      "ccel.bin": "87699e4e0791507ee8d685969d88038664bb4ab41a8f7af5430464c9fff7ab02",
+      "google-firmware-verification.json": "ad5b95fa44c3f8b8b4ac104d5549d6a840a3827d8d98dcac326a6dc76e51a858",
+      "google-launch-endorsement.binarypb": "9bb40f84dd373261baba826c05a3fa2f3f88471f713bdebb2f537764d1c96471",
+      "google-tcb-root.crt": "e876bc6978bf4f3da445f98a0a82363c8c0bae5a1fc033c6df65846a6cb0f18c",
+      "google-tcb-root.pem": "924f25618b1aeb442469c2a318803b2438dc905ff58c54be91ca90ba77cfed74",
+      "image-measurement-comparison.json": "45c736326ffebe9cb83772e5d38a989e24ba6605b7c2fe167bc7fb391e60f04a",
+      "instance.json": "413874ef6c8bbd3d6956c5b7b96541aec51028fda76e14503a712d95653dba02",
+      "intel-collateral.json": "a647b68f920ee5e097e1fd62940020473ed68dcf3f6add4335fd0e9cc4054654",
+      "intel-quote-verification.json": "8fbb0e405e459654ddd28344f6fc7d0cbd7c3d68ea225d00b7a18c210e0e5721",
+      "nonce.bin": "3fca4a1061f4565b6c30c30538525d914037f2790aa266217366e38b6ac95792",
+      "os-release.json": "b76fc7b3ffb34625c59ec5a5a90660608fbb54b972bd76961cb7868847789913",
+      "os-release.sigstore.json": "6f38349a6fdd6c8f0d3172ebcec691f89ff91eff187306dacfaaf8428cc78220",
+      "quote.bin": "8b80a2811a5df83e5711049a29efd5134d0f160bf35f1bb5925d6d3972d8eca8",
+      "sigstore-verification.json": "c2f7dc3d1e3bc7fead49c037833ed634cd43a405635b4dc75c2cf06e32ba917a"
+    }
+  }
+}
